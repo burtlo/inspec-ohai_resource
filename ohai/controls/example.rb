@@ -13,3 +13,18 @@ describe ohai do
   # its( %w[chef_packages chef version ]) { should eq('14.11.21') }
   its('chef_packages.chef.version') { should eq '14.11.21' }
 end
+
+describe elasticsearch_config('a.yml') do
+  its('xpack.security.authc.realms.pki1.type') { should eq('pki') }
+  its('xpack.security.authc.realms.pki1.order') { should eq(1) }
+end
+
+describe elasticsearch_config('b.yml') do
+  its('xpack.security.authc.realms.pki1.type') { should eq('pki') }
+  its('xpack.security.authc.realms.pki1.order') { should eq(1) }
+end
+
+describe elasticsearch_config('c.yml') do
+  its('xpack.security.authc.realms.pki1.type') { should eq('pki') }
+  its('xpack.security.authc.realms.pki1.order') { should eq(1) }
+end

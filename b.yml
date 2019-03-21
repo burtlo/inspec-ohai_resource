@@ -1,0 +1,2 @@
+xpack.security.authc.realms.pki1.type: pki
+xpack.security.authc.realms.pki1.order: 1

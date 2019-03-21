@@ -1,0 +1,5 @@
+xpack:
+  security:
+    authc:
+      realms.pki1.type: pki
+      realms.pki1.order: 1
