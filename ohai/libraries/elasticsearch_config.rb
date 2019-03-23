@@ -55,7 +55,7 @@ name 'elasticsearch_config'
     # NOTE: Look at every key and if that key has a dot notation 
     #   it means there is more heirachy to add that was shortened up
     results.each do |key, value|
-      expanded_results = deep_merge(expanded_results,expand_key(key, value))s
+      expanded_results = deep_merge(expanded_results,expand_key(key, value))
     end
 
     @config = ElasticConfigMash.new(expanded_results)
