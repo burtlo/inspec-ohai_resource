@@ -26,7 +26,9 @@ shared_context 'InSpec Resources', type: :inspec_resource do
   let(:resource_class) { Inspec::Resource.registry[resource_name] }
 
   # Create an instance of the resource with the mock backend and the resource name
-  let(:resource) { resource_class.new(backend,resource_name) }
+  def resource(*args)
+    resource_class.new(backend, resource_name, *args)
+  end
 
   # This is a no-op backend that should be overridden. Below is a helper method #environment which
   #   provides some shortcuts for hiding some of the RSpec mocking/stubbing double language.
@@ -89,9 +91,10 @@ class DoubleBuilder
   # Create a test double that models the hash into an object 
   #   and add it to the last backend double defined.
   def returns(method_signature_as_hash)
+    return_result = Hashie::Mash.new(method_signature_as_hash)
     last_double = backend_doubles.last
     results_double_name = "#{last_double.name}_#{last_double.inputs}_RESULTS"
-    last_double.outputs = @test_context.double(results_double_name,method_signature_as_hash)
+    last_double.outputs = @test_context.double(results_double_name,return_result)
     self
   end
 

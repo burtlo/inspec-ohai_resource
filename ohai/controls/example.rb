@@ -1,12 +1,24 @@
 # encoding: utf-8
-# copyright: 2018, The Authors
+# copyright: 2019, The Authors
 
 describe ohai do
-  # NOTE: If you stick with the inspec.json parsed solution this is what you 
-  #   live with when traversing elements in the results. I don't care for it much
-  # its( %w[chef_packages chef version ]) { should eq('14.11.21') }
+  its('version') { should eq '14.8.10' }
+end
+
+describe ohai do
   its('chef_packages.chef.version') { should eq '14.11.21' }
 end
+
+describe ohai(attribute: 'chef_packages') do
+  its('chef_packages.chef.version') { should eq '14.11.21' }
+end
+
+describe ohai(attribute: ['os', 'chef_packages']) do
+  its('os') { should eq 'darwin' }
+  its('chef_packages.chef.version') { should eq '14.11.21' }
+end
+
+
 
 describe elasticsearch_config('a.yml') do
   its('xpack.security.authc.realms.pki1.type') { should eq('pki') }
@@ -31,8 +43,8 @@ module Inspec::Resources
       @recursive = options[:recursive]
     end
     def files
-      # *nix solution
       results = inspec.command("ls -R #{path}").stdout
+      # *nix solution
 
       files_in_root, *sub_directories = results.split("\n\n")
       files_found = files_in_root.split("\n").map { |f| inspec.file(File.join(file.path,f)) }
