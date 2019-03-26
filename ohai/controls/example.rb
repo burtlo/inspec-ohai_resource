@@ -61,7 +61,7 @@ end
 # The following could be a reasonable use of the `directory.files`
 directory('ohai').files.each do |file|
   describe file do
-    it { should_nots be_executable }
+    it { should_not be_executable }
   end
 end
 
@@ -114,3 +114,8 @@ describe file('ohai/inspec.yml') do
   it { should_not be_executable }
   it { should be_executable }
 end
+
+# describe directory('ohai', recursive: true).find(/\.md$/) do
+#   its('files') { should_not be_executable }
+#   its('files') { should be_executable }
+# end

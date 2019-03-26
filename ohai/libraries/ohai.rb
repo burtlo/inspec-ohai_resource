@@ -7,16 +7,20 @@ class OhaiResource < Inspec.resource(1)
     end
   EXAMPLE
   
+  module ReturnResultsWhenNoValueProvided ; end
   # NOTE: If you call this method without a param then return the existing results,
   #   if there are any. If you pass a param you are using this as a setter method
   #   so assign to the results and then return that.
-  def self.results(new_results = nil)
-    if new_results
+  def self.results(new_results = ReturnResultsWhenNoValueProvided)
+    if new_results != ReturnResultsWhenNoValueProvided
       @results = new_results
+
+      # NOTE: If setting this multiple times there are going to be a bunch of orphaned
+      #   methods. Another approach would be to use #method_missing on the instance
 
       # To provide a top-level interface on the resource within the test files the keys
       #  at the top of the results that came back need to define methods on the instance.
-      new_results.keys.each do |key|
+      Hash(new_results).keys.each do |key|
         define_method key do
           ohai_results[key]
         end
@@ -69,6 +73,7 @@ class OhaiResource < Inspec.resource(1)
   end
 
   def load_results_from(path)
+    raise 'Ohai Not Found' if path.nil? || path.empty?
     # NOTE: You could use this to create the JSON object. But I don't like interacting with it this way
     # results = inspec.json({ content: inspec.command(ohai_path).stdout })
 
