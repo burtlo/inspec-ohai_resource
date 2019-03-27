@@ -132,10 +132,18 @@ class OhaiResource < Inspec.resource(1)
       attribute_with_results = @ohai_attributes.each_with_index.map do |attribute, index|
         matching_results = parsed_results[index]
         matching_results = Array(matching_results).first if Array(matching_results).count == 1
-        { "#{attribute}": matching_results }
+        
+        # The attribute itself may be a compounded key separated by forward-slashes.
+        # So we need to build a hash and have a pointer to the root,
+        # the lasst hash and the final key to be added
+        root, last_hash, last_key = expand_attribute(attribute)
+        last_hash[last_key] = matching_results
+        root
       end
-
-      attribute_with_results.reduce({}, :merge)
+      
+      # The results coming could be hashes that contain conflicting keys
+      # so the hashes will need to be deep-merged.
+      attribute_with_results.reduce({}) { |acc,cur| deep_merge(acc, cur) }
     end
     
     # TODO: The lower-level keys return the Hashie::Mash which probably produces
@@ -143,6 +151,17 @@ class OhaiResource < Inspec.resource(1)
     results = OhaiMash.new( raw_code_object_results )
 
     results
+  end
+
+  def expand_attribute(attribute)
+    expanded = {}
+    last_key, *root_keys = attribute.split('/').reverse
+    last_key_ptr = root_keys.reverse.reduce(expanded) { |h,k| h[k] = {} ; h[k] }
+    [ expanded, last_key_ptr, last_key ]
+  end
+
+  def deep_merge(h1, h2)
+    h1.merge(h2) { |k,v1,v2| deep_merge(v1, v2) }
   end
 
   # Creating a subclass of the Hashie::Mash because that is the only place

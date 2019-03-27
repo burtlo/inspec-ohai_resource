@@ -37,47 +37,30 @@ describe_inspec_resource 'ohai' do
     end
 
     context 'with an attribute parameter' do
-      it 'singular result attributes are accessible via dot-notation' do
-        environment do
-          command('which ohai').returns(stdout: '/path/to/ohai')
-          command('/path/to/ohai os').returns(result: {
-            stdout: '[ "darwin" ]', exit_status: 0
-          })
-        end
-
-        # NOTE: Should this be changed to be #value? because it seems strange to
-        #   say the os attribute and then repeat os afterwards
-        expect(resource(attribute: 'os').os).to eq('darwin')
-      end
-
-      # NOTE: Because of the way that environment works this let helper is not found:
-      # 
-      # let(:chef_packages_stdout) do
-      #   <<~STDOUT
-      #     {
-      #       "chef": {
-      #         "version": "14.11.21",
-      #         "chef_root": "/Users/franklinwebber/.rbenv/versions/2.4.3/lib/ruby/gems/2.4.0/gems/chef-14.11.21/lib"
-      #       },
-      #       "ohai": {
-      #         "version": "14.8.10",
-      #         "ohai_root": "/Users/franklinwebber/.rbenv/versions/2.4.3/lib/ruby/gems/2.4.0/gems/ohai-14.8.10/lib/ohai"
-      #       }
-      #     }
-      #   STDOUT
-      # end
-
-      it 'attributes are accessible via dot-notation' do
+      # Specifying an attribute as a parameter focuses the ohai run to only
+      # that attribute. This makes ohai run quicker as it ignores all other
+      # attributes.
+      
+      it 'the attribute is accessible via dot-notation' do
+        # NOTE: Because of the way the environment helper works a let helper will not work:
+        # 
+        # let(:chef_packages_stdout) do
+        #   <<~STDOUT
+        #     {
+        #      ...
+        #     }
+        #   STDOUT
+        # end
         environment do
           chef_packages_stdout = <<~STDOUT
             {
               "chef": {
                 "version": "14.11.21",
-                "chef_root": "/Users/franklinwebber/.rbenv/versions/2.4.3/lib/ruby/gems/2.4.0/gems/chef-14.11.21/lib"
+                "chef_root": "/Users/.../chef-14.11.21/lib"
               },
               "ohai": {
                 "version": "14.8.10",
-                "ohai_root": "/Users/franklinwebber/.rbenv/versions/2.4.3/lib/ruby/gems/2.4.0/gems/ohai-14.8.10/lib/ohai"
+                "ohai_root": "/Users/.../ohai-14.8.10/lib/ohai"
               }
             }
           STDOUT
@@ -87,11 +70,84 @@ describe_inspec_resource 'ohai' do
           })
         end
 
-        # NOTE: Should this be changed so that #chef_packages does not need to be defined?
+        # NOTE: Initially I thought that when specifying an attribute the interface of the resource
+        #   should change so that the attribute name would not have to be repeated. But you can
+        #   specify multiple attributes and to support that would potentially lead to collisions
+        #   or surprises with the data that is returned.
         expect(resource(attribute: 'chef_packages').chef_packages.chef.version).to eq('14.11.21')
       end
 
+      context 'defined as a path to the specific attribute' do
+        it 'is accessible via dot-notation' do
+          environment do
+            chef_packages_ohai_stdout = <<~STDOUT
+              {
+                "version": "14.8.10",
+                "ohai_root": "/Users/.../ohai-14.8.10/lib/ohai"
+              }
+            STDOUT
+            command('which ohai').returns(stdout: '/path/to/ohai')
+            command('/path/to/ohai chef_packages/ohai').returns(result: {
+              stdout: chef_packages_ohai_stdout, exit_status: 0
+            })
+          end
 
+          expect(resource(attribute: 'chef_packages/ohai').chef_packages.ohai.version).to eq('14.8.10')
+        end
+      end
+
+      context 'mulitple paths to attributes in the same tree' do
+        it 'is accessible via dot-notation' do
+          environment do
+            two_chef_package_attributes_stdout = <<~STDOUT
+              {
+                "version": "14.11.21",
+                "chef_root": "/Users/.../chef-14.11.21/lib"
+              }
+              {
+                "version": "14.8.10",
+                "ohai_root": "/Users/.../ohai-14.8.10/lib/ohai"
+              }
+            STDOUT
+            command('which ohai').returns(stdout: '/path/to/ohai')
+            command('/path/to/ohai chef_packages/chef chef_packages/ohai').returns(result: {
+              stdout: two_chef_package_attributes_stdout, exit_status: 0
+            })
+          end
+
+          result = resource(attribute: ['chef_packages/chef', 'chef_packages/ohai'])
+          expect(result.chef_packages.chef.version).to eq('14.11.21')
+          expect(result.chef_packages.ohai.version).to eq('14.8.10')
+        end
+      end
+
+      context 'that returns a singular result represented by an array' do
+        # When asking for an attribute that results in only the values
+        # then the results come back in an Array format.
+
+        it 'is accessible via dot-notation' do
+          environment do
+            command('which ohai').returns(stdout: '/path/to/ohai')
+            command('/path/to/ohai os').returns(result: {
+              stdout: '[ "darwin" ]', exit_status: 0
+            })
+          end
+  
+          # NOTE: Initially I thought that when specifying an attribute the interface of the resource
+          #   should change so that the attribute name would not have to be repeated. But you can
+          #   specify multiple attributes and to support that would potentially lead to collisions
+          #   or surprises with the data that is returned.
+          expect(resource(attribute: 'os').os).to eq('darwin')
+        end
+      end
+    end
+
+    context 'with mulitple attribute parameters' do
+      # When you provide multiple attributes as parameters ohai will 
+      # return multiple JSON objects next each other in the output. This
+      # requires that the output be correctly partitioned and then assigned
+      # back to the parameter that was provided
+      
       it 'two attributes are accessible via dot-notation' do
         environment do
           ohai_stdout = <<~STDOUT
@@ -101,11 +157,11 @@ describe_inspec_resource 'ohai' do
             {
               "chef": {
                 "version": "14.11.21",
-                "chef_root": "/Users/franklinwebber/.rbenv/versions/2.4.3/lib/ruby/gems/2.4.0/gems/chef-14.11.21/lib"
+                "chef_root": "/Users/.../chef-14.11.21/lib"
               },
               "ohai": {
                 "version": "14.8.10",
-                "ohai_root": "/Users/franklinwebber/.rbenv/versions/2.4.3/lib/ruby/gems/2.4.0/gems/ohai-14.8.10/lib/ohai"
+                "ohai_root": "/Users/.../ohai-14.8.10/lib/ohai"
               }
             }
           STDOUT
@@ -115,6 +171,10 @@ describe_inspec_resource 'ohai' do
           })
         end
 
+        # NOTE: Initially I thought that when specifying an attribute the interface of the resource
+        #   should change so that the attribute name would not have to be repeated. But you can
+        #   specify multiple attributes and to support that would potentially lead to collisions
+        #   or surprises with the data that is returned.
         expect(resource(attribute: ['os', 'chef_packages']).os).to eq('darwin')
         expect(resource(attribute: ['os', 'chef_packages']).chef_packages.chef.version).to eq('14.11.21')
       end
