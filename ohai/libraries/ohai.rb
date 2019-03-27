@@ -18,15 +18,9 @@ class OhaiResource < Inspec.resource(1)
 
     @ohai_path_override = options[:path]
 
-    # NOTE: Other options could also be provided to pass along to the execution
-
-    # NOTE: Plugins and plugin paths could also be specifed as an option on creation
-    #   because not running all the plugins would make for a faster executing resource
-    
-    # TODO: If more than one attribute is provided it displays the outputs one right after
-    #   the other and that makes it a more time-consuming processing to JSON parse. Some regex
-    #   splitting or more intelligent parsing would have to be developed.
     @ohai_attributes = Array(options[:attribute] || options['attribute'])
+
+    @ohai_directories = Array(options[:directory] || options['directory'])
   end
 
   def version
@@ -71,7 +65,15 @@ class OhaiResource < Inspec.resource(1)
 
   def build_ohai_command
     cmd = "#{ohai_path}"
-    cmd += " #{@ohai_attributes.join(' ')}" unless @ohai_attributes.empty?
+
+    @ohai_directories.each do |dir|
+      cmd += " --directory #{dir}"
+    end
+
+    @ohai_attributes.each do |attribute|
+      cmd += " #{attribute}"
+    end
+
     cmd
   end
 
@@ -104,9 +106,6 @@ class OhaiResource < Inspec.resource(1)
 
   # Run the ohai command provided at the path, process the results and cache the data for
   # future resources to use.
-  #
-  # TODO: This function does three things: loads the results, processes the results, and 
-  #    caches the results. Move the caching outside at least and move that into its own step
   # 
   # @param path the path to the ohai executable when invoked will generate the JSON results
   # @return the
@@ -146,8 +145,10 @@ class OhaiResource < Inspec.resource(1)
       attribute_with_results.reduce({}) { |acc,cur| deep_merge(acc, cur) }
     end
     
-    # TODO: The lower-level keys return the Hashie::Mash which probably produces
-    #   very meaningless errors as well that could be improved.
+    # TODO: Using an OhaiMash (Hashie::Mash) is an easy way to get dot-notation
+    #   however, it does not give a lot of support to the user if they were to
+    #   take a mis-step. Consider creating an object that could report better
+    #   errors when an incorrect sub-key has been specified.
     results = OhaiMash.new( raw_code_object_results )
 
     results

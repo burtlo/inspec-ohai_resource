@@ -96,31 +96,6 @@ describe_inspec_resource 'ohai' do
         end
       end
 
-      context 'mulitple paths to attributes in the same tree' do
-        it 'is accessible via dot-notation' do
-          environment do
-            two_chef_package_attributes_stdout = <<~STDOUT
-              {
-                "version": "14.11.21",
-                "chef_root": "/Users/.../chef-14.11.21/lib"
-              }
-              {
-                "version": "14.8.10",
-                "ohai_root": "/Users/.../ohai-14.8.10/lib/ohai"
-              }
-            STDOUT
-            command('which ohai').returns(stdout: '/path/to/ohai')
-            command('/path/to/ohai chef_packages/chef chef_packages/ohai').returns(result: {
-              stdout: two_chef_package_attributes_stdout, exit_status: 0
-            })
-          end
-
-          result = resource(attribute: ['chef_packages/chef', 'chef_packages/ohai'])
-          expect(result.chef_packages.chef.version).to eq('14.11.21')
-          expect(result.chef_packages.ohai.version).to eq('14.8.10')
-        end
-      end
-
       context 'that returns a singular result represented by an array' do
         # When asking for an attribute that results in only the values
         # then the results come back in an Array format.
@@ -177,6 +152,64 @@ describe_inspec_resource 'ohai' do
         #   or surprises with the data that is returned.
         expect(resource(attribute: ['os', 'chef_packages']).os).to eq('darwin')
         expect(resource(attribute: ['os', 'chef_packages']).chef_packages.chef.version).to eq('14.11.21')
+      end
+
+      context 'in the same tree' do
+        # The concern here is that because the data coming back share similar keys
+        # that the data would truncate one another instead of merging together properly
+
+        it 'is accessible via dot-notation' do
+          environment do
+            two_chef_package_attributes_stdout = <<~STDOUT
+              {
+                "version": "14.11.21",
+                "chef_root": "/Users/.../chef-14.11.21/lib"
+              }
+              {
+                "version": "14.8.10",
+                "ohai_root": "/Users/.../ohai-14.8.10/lib/ohai"
+              }
+            STDOUT
+            command('which ohai').returns(stdout: '/path/to/ohai')
+            command('/path/to/ohai chef_packages/chef chef_packages/ohai').returns(result: {
+              stdout: two_chef_package_attributes_stdout, exit_status: 0
+            })
+          end
+
+          result = resource(attribute: ['chef_packages/chef', 'chef_packages/ohai'])
+          expect(result.chef_packages.chef.version).to eq('14.11.21')
+          expect(result.chef_packages.ohai.version).to eq('14.8.10')
+        end
+      end
+    end
+
+    context 'with a directory parameter' do
+      # The directory parameter is a location where additional plugins
+      # will be loaded. This should be passed to the ohai command. The
+      # results should be the same.
+      
+      it 'is specified in the command' do
+        environment do
+          command('which ohai').returns(stdout: '/path/to/ohai')
+          command('/path/to/ohai --directory plugin_dir').returns(result: {
+            stdout: '{ "os": "darwin" }', exit_status: 0
+          })
+        end
+
+        expect(resource(directory: 'plugin_dir').os).to eq('darwin')
+      end
+    end
+
+    context 'with multiple directory parameters' do
+      it 'is specified in the command' do
+        environment do
+          command('which ohai').returns(stdout: '/path/to/ohai')
+          command('/path/to/ohai --directory plugin_dir1 --directory plugin_dir2').returns(result: {
+            stdout: '{ "os": "darwin" }', exit_status: 0
+          })
+        end
+
+        expect(resource(directory: ['plugin_dir1', 'plugin_dir2']).os).to eq('darwin')
       end
     end
 
