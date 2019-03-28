@@ -256,7 +256,7 @@ describe_inspec_resource 'ohai' do
           stdout: '', exit_status: 1
         })
       end
-      expect { resource('my-ohai').os }.to raise_error('Ohai my-ohai failed to execute (1)')
+      expect { resource('my-ohai').os }.to raise_error(OhaiResource::ExecutionFailure)
     end
   end
 

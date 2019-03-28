@@ -140,8 +140,8 @@ class OhaiResource < Inspec.resource(1)
   class PathCouldNotBeFound < StandardError
     def initialize(resource, provided_path, derived_path)
       @resource = resource
-      @provided_path = nil_or_empty?(provided_path) ? '<NONE>' : provided_path
-      @derived_path = nil_or_empty?(derived_path) ? '<NONE>' : derived_path
+      @provided_path = nil_or_empty_default_to(provided_path, '<NONE>')
+      @derived_path = nil_or_empty_default_to(derived_path, '<NONE>')
     end
 
     attr_reader :resource, :provided_path, :derived_path
@@ -156,8 +156,8 @@ class OhaiResource < Inspec.resource(1)
 
     private
 
-    def nil_or_empty?(value)
-      value.nil? || value.empty?
+    def nil_or_empty_default_to(value,default_to)
+      (value.nil? || value.empty?) ? default_to : value
     end
   end
 
@@ -206,6 +206,34 @@ class OhaiResource < Inspec.resource(1)
     output.strip.split(/(^[\]\}])/).each_slice(2).map {|result| result.join }
   end
 
+  class ExecutionFailure < RuntimeError
+    def initialize(resource, command, result)
+      @resource = resource
+      @command = command
+      @result = result
+    end
+
+    attr_reader :resource, :command, :result
+
+    def message
+      <<~RAISE
+      #{resource} failed to execute.
+      Command: #{command}
+      Results:
+        EXIT STATUS: #{result.exit_status}
+
+             STDOUT: #{nil_or_empty_default_to(result.stdout,'<NONE>')}
+
+             STDERR: #{nil_or_empty_default_to(result.stderr,'<NONE>')}
+      RAISE
+    end
+
+    private
+
+    def nil_or_empty_default_to(value,default_to)
+      (value.nil? || value.empty?) ? default_to : value
+    end
+  end
   # Run the ohai command provided at the path, process the results and cache the data for
   # future resources to use.
   # 
@@ -213,8 +241,7 @@ class OhaiResource < Inspec.resource(1)
   # @return the
   def load_results
     result = inspec.command(build_ohai_command).result
-    # TODO: Include stderr and other information in the failure case
-    raise "Ohai #{ohai_path} failed to execute (#{result.exit_status})" if result.exit_status != 0
+    raise ExecutionFailure.new(self, build_ohai_command, result) if result.exit_status != 0
     
     partitioned_results = partition_results(result.stdout)
 
