@@ -101,29 +101,9 @@ class OhaiResource < Inspec.resource(1)
 
   def method_missing(name,*args,&block)
     if raw_data
-      if raw_data.key?(name)
-        raw_data[name]
-      else
-        raise InvalidAttribute.new(self, name)
-      end
+      raw_data[name]
     else
       super
-    end
-  end
-
-  class InvalidAttribute < StandardError
-    def initialize(resource, attribute_name)
-      @resource = resource
-      @attribute_name = attribute_name
-    end
-
-    attr_reader :resource, :attribute_name
-  
-    def message
-      <<~RAISE
-        #{resource} results did not contain the attribute: #{attribute_name}
-        Supported attributes: #{resource.raw_data.keys.join(', ')}
-      RAISE
     end
   end
 
@@ -206,25 +186,6 @@ class OhaiResource < Inspec.resource(1)
     output.strip.split(/(^[\]\}])/).each_slice(2).map {|result| result.join }
   end
 
-  class ResultsParsingError < RuntimeError
-    def initialize(resource, results, parse_error)
-      @resource = resource
-      @results = results
-      @parse_error = parse_error
-    end
-
-    attr_reader :resource, :results, :parse_error
-
-    def message
-      <<~RAISE
-        #{resource} failed to parse the results:
-          ERROR: [#{parse_error.class}] #{parse_error} 
-
-        RESULTS: #{results}
-
-      RAISE
-    end
-  end
   # Run the ohai command provided at the path, process the results and cache the data for
   # future resources to use.
   # 
@@ -236,11 +197,6 @@ class OhaiResource < Inspec.resource(1)
     
     partitioned_results = partition_results(result.stdout)
 
-    # TODO: A JSON::ParserError is thrown here when the JSON is incorrect but the resulting error
-    #   message does not inclue a lot of information to make it easy to find out what is going on
-    #   so it may be important to make a new error that shows the command executed. The resulting
-    #   standard out and then display the error. It would also be nice if inspec provided a place
-    #   locally when this error message is so big.
     parsed_results = partitioned_results.map do |result|
       begin
         JSON.parse(result)
@@ -269,13 +225,7 @@ class OhaiResource < Inspec.resource(1)
       attribute_with_results.reduce({}) { |acc,cur| deep_merge(acc, cur) }
     end
     
-    # TODO: Using an OhaiMash (Hashie::Mash) is an easy way to get dot-notation
-    #   however, it does not give a lot of support to the user if they were to
-    #   take a mis-step. Consider creating an object that could report better
-    #   errors when an incorrect sub-key has been specified.
-    results = OhaiMash.new( raw_code_object_results )
-
-    results
+    OhaiMash.new(raw_code_object_results)
   end
 
   def expand_attribute(attribute)
@@ -289,16 +239,48 @@ class OhaiResource < Inspec.resource(1)
     h1.merge(h2) { |k,v1,v2| deep_merge(v1, v2) }
   end
 
-  # Creating a subclass of the Hashie::Mash because that is the only place
-  # in which it is safe for you to disable warnings when the data structure defines keys
-  # that have similar names ass methods that important for Hashie::Mash.
+  # The OhaiMash takes advantage of the Hashie::Mash by providing dot-notation
+  # all the way down for any Hashes within the results. As Ohai is mostly hashes
+  # to describe the heirachy, this makes for a better interface for the author
+  # when writing expectations.
   #
-  # In the case of Ohai results the `counters` and `kernel` sections contain:
-  #     drop, index and size
-  #
-  # Because this data is going to be read-only overwriting seems safe.
+  # What we don't want is the default Mash behavior of accepting keys that are not
+  # defined. And instead want to raise an error with some useful information to
+  # help the author find out where they made a mistake.
   class OhaiMash < Hashie::Mash
+    # Creating a subclass of the Hashie::Mash because that is the only place
+    # in which it is safe for you to disable warnings when the data structure defines keys
+    # that have similar names ass methods that important for Hashie::Mash.
+    #
+    # In the case of Ohai results the `counters` and `kernel` sections contain:
+    #     drop, index and size
+    #
+    # Because this data is going to be read-only overwriting seems safe.
     disable_warnings
+
+    # When a key is accessed but it is not found then we want to generate
+    # an error that gives the author some detail about where they went wrong
+    def default_proc
+      lambda do |hash, missing_key|
+        raise InvalidAttribute.new(hash, missing_key)
+      end
+    end
+  end
+
+  class InvalidAttribute < StandardError
+    def initialize(attribute_store, attribute_name)
+      @attribute_store = attribute_store
+      @attribute_name = attribute_name
+    end
+
+    attr_reader :attribute_store, :attribute_name
+  
+    def message
+      <<~RAISE
+        Results did not contain the attribute: #{attribute_name}
+        Supported attributes: #{attribute_store.keys.join(', ')}
+      RAISE
+    end
   end
 
   class ExecutionFailure < RuntimeError
@@ -330,4 +312,25 @@ class OhaiResource < Inspec.resource(1)
       (value.nil? || value.empty?) ? default_to : value
     end
   end
+
+  class ResultsParsingError < RuntimeError
+    def initialize(resource, results, parse_error)
+      @resource = resource
+      @results = results
+      @parse_error = parse_error
+    end
+
+    attr_reader :resource, :results, :parse_error
+
+    def message
+      <<~RAISE
+        #{resource} failed to parse the results:
+          ERROR: [#{parse_error.class}] #{parse_error} 
+
+        RESULTS: #{results}
+
+      RAISE
+    end
+  end
+
 end
