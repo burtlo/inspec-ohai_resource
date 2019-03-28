@@ -260,4 +260,10 @@ describe_inspec_resource 'ohai' do
       expect { resource('my-ohai').os }.to raise_error('Ohai my-ohai failed to execute (1)')
     end
   end
+
+  context 'when an invalid option is provided' do
+    it 'fails with error' do
+      expect { resource(animal: 'zebra') }.to raise_error(OhaiResource::InvalidResourceOptions)
+    end
+  end
 end

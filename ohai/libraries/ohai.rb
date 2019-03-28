@@ -5,21 +5,55 @@ class OhaiResource < Inspec.resource(1)
     describe ohai do
       its('uptime_seconds') { should be > 360 }
     end
-  EXAMPLE
-
-  def initialize(ohai_path_override_or_options = {})
-    # TODO: Compare options against a list of valid option names and throw errors
-    #   when one is not defined to prevent users from losing hours to misspellings
-    options = if ohai_path_override_or_options.is_a?(String)
-      { path: ohai_path_override_or_options }
-    else
-      ohai_path_override_or_options
+    
+    describe ohai(attribute: 'os') do
+      its('os').os { should eq 'darwin' }
     end
 
+    describe ohai(attribute: 'chef_packages/chef/version') do
+      its('chef_packages.chef.version') { should eq '14.18.11' }
+    end
+
+    describe ohai(attribute: [ 'os', 'chef_packages/chef/version' ]) do
+      its('os') { should eq 'darwin' }
+      its('chef_packages.chef.version') { should eq '14.18.11' }
+    end
+
+    describe ohai(directory: '/etc/chef/ohai_plugins') do
+      # ...
+    end
+
+    describe ohai(directory: [ '/etc/chef/ohai_plugins', '/tmp/ohai_plugins' ]) do
+      # ...
+    end
+    
+    describe ohai('/my/path/to/ohai') do
+      its('chef_packages.chef.version') { should eq '14.18.11' }
+    end
+
+    describe ohai(path: '/my/path/to/ohai', attribute: [ 'os', 'chef_packages' ]) do
+      its('os') { should eq 'darwin' }
+      its('chef_packages.chef.version') { should eq '14.18.11' }
+    end
+  EXAMPLE
+
+  # When the resource is created you have a few options:
+  #
+  #   * no argument will default to finding ohai and run it as-is
+  #   * the path to ohai and run it as-is
+  #   * the path and various options passed to it
+  #
+  def initialize(ohai_path_or_options = {})
+    options = if ohai_path_or_options.is_a?(String)
+      { path: ohai_path_or_options }
+    else
+      ohai_path_or_options
+    end
+
+    verify_options!(options)
+    
     @ohai_path_override = options[:path]
-
     @ohai_attributes = Array(options[:attribute] || options['attribute'])
-
     @ohai_directories = Array(options[:directory] || options['directory'])
   end
 
@@ -28,19 +62,37 @@ class OhaiResource < Inspec.resource(1)
     inspec.command("#{ohai_path} --version").stdout.strip.split(": ").last
   end
 
-  def ohai_results
-    @ohai_results ||= load_results
+  def raw_data
+    @raw_data ||= load_results
   end
 
   private
 
+  def supported_options
+    %w[ path attribute directory ].map { |opt| [ opt , opt.to_sym ] }.flatten
+  end
+
+  class InvalidResourceOptions < RuntimeError ; end
+
+  def verify_options!(options)
+    unsupported_options = options.keys.find_all { |key| ! supported_options.include?(key) }
+
+    unless unsupported_options.empty?
+      error_message = <<~RAISE
+        The Ohai resource does not support options: #{ unsupported_options.join(', ') }
+        Supported Options: #{ supported_options.map { |opt| opt.inspect }.join(', ') }
+      RAISE
+      raise InvalidResourceOptions.new(error_message)
+    end
+  end
+
   def method_missing(name,*args,&block)
-    if ohai_results
-      if ohai_results.key?(name)
-        ohai_results[name]
+    if raw_data
+      if raw_data.key?(name)
+        raw_data[name]
       else
         # TODO: Create a better error message to make it clear that these are the top-level keys
-        raise "The Ohai results do not have attribute '#{name}'. Ohai did find: #{ohai_results.keys}"
+        raise "The Ohai results do not have attribute '#{name}'. Ohai did find: #{raw_data.keys}"
       end
     else
       # Default to the usual method_missing when there are no results.
@@ -49,7 +101,7 @@ class OhaiResource < Inspec.resource(1)
   end
 
   def ohai_path
-    @resolved_ohai_path ||= begin
+    @ohai_path ||= begin
       path = @ohai_path_override || find_ohai_path_on_target
       # TODO: Better error that describes that no/empty path provided
       #   or the strategy used to find it. Other resources must do this use their work
@@ -134,7 +186,7 @@ class OhaiResource < Inspec.resource(1)
         
         # The attribute itself may be a compounded key separated by forward-slashes.
         # So we need to build a hash and have a pointer to the root,
-        # the lasst hash and the final key to be added
+        # the last hash and the final key to be added
         root, last_hash, last_key = expand_attribute(attribute)
         last_hash[last_key] = matching_results
         root
@@ -155,10 +207,10 @@ class OhaiResource < Inspec.resource(1)
   end
 
   def expand_attribute(attribute)
-    expanded = {}
+    root = {}
     last_key, *root_keys = attribute.split('/').reverse
-    last_key_ptr = root_keys.reverse.reduce(expanded) { |h,k| h[k] = {} ; h[k] }
-    [ expanded, last_key_ptr, last_key ]
+    last_hash = root_keys.reverse.reduce(root) { |h,k| h[k] = {} ; h[k] }
+    [ root, last_hash, last_key ]
   end
 
   def deep_merge(h1, h2)
