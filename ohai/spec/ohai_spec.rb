@@ -239,12 +239,12 @@ describe_inspec_resource 'ohai' do
     it 'the top-level keys are defined as methods' do
       environment do
         command('which ohai').returns(stdout: '/path/to/ohai')
-        command('/path/to/ohai').returns(result: {
+        command('/another/path/to/ohai').returns(result: {
           stdout: '{ "os": "darwin" }', exit_status: 0
         })
       end
 
-      expect(resource.os).to eq('darwin')
+      expect(resource(ohai_bin_path: '/another/path/to/ohai').os).to eq('darwin')
     end
   end
 

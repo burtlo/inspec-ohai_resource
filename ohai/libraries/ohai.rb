@@ -31,7 +31,7 @@ class OhaiResource < Inspec.resource(1)
       its('chef_packages.chef.version') { should eq '14.18.11' }
     end
 
-    describe ohai(path: '/my/path/to/ohai', attribute: [ 'os', 'chef_packages' ]) do
+    describe ohai(ohai_bin_path: '/my/path/to/ohai', attribute: [ 'os', 'chef_packages' ]) do
       its('os') { should eq 'darwin' }
       its('chef_packages.chef.version') { should eq '14.18.11' }
     end
@@ -43,11 +43,11 @@ class OhaiResource < Inspec.resource(1)
   #   * the path to ohai and run it as-is
   #   * the path and various options passed to it
   #
-  def initialize(ohai_path_or_options = {})
-    options = if ohai_path_or_options.is_a?(String)
-      { path: ohai_path_or_options }
+  def initialize(ohai_bin_path_or_options = {})
+    options = if ohai_bin_path_or_options.is_a?(String)
+      { ohai_bin_path: ohai_bin_path_or_options }
     else
-      ohai_path_or_options
+      ohai_bin_path_or_options
     end
 
     verify_options!(options)
@@ -59,7 +59,7 @@ class OhaiResource < Inspec.resource(1)
   end
 
   def version
-    inspec.command("#{ohai_path} --version").stdout.strip.split(' ').last
+    inspec.command("#{ohai_bin_path} --version").stdout.strip.split(' ').last
   end
 
   def raw_data
@@ -71,7 +71,7 @@ class OhaiResource < Inspec.resource(1)
   private
 
   def supported_options
-    %w[ path attribute directory ].map { |opt| [ opt , opt.to_sym ] }.flatten
+    %w[ ohai_bin_path attribute directory ].map { |opt| [ opt , opt.to_sym ] }.flatten
   end
 
   def verify_options!(options)
@@ -107,11 +107,11 @@ class OhaiResource < Inspec.resource(1)
     end
   end
 
-  def ohai_path
-    @ohai_path ||= begin
-      path = options[:path] || find_ohai_path_on_target
+  def ohai_bin_path
+    @ohai_bin_path ||= begin
+      path = options[:ohai_bin_path] || find_ohai_bin_path_on_target
       if path.nil? || path.empty?
-        raise PathCouldNotBeFound.new(self,options[:path],find_ohai_path_on_target)
+        raise PathCouldNotBeFound.new(self,options[:ohai_bin_path],find_ohai_bin_path_on_target)
       end
       path
     end
@@ -141,13 +141,13 @@ class OhaiResource < Inspec.resource(1)
     end
   end
 
-  def find_ohai_path_on_target
+  def find_ohai_bin_path_on_target
     # TODO: provide support for all platforms and other strageties
     inspec.command('which ohai').stdout.chomp
   end
 
   def build_ohai_command
-    cmd = "#{ohai_path}"
+    cmd = "#{ohai_bin_path}"
 
     options[:directory].each do |dir|
       cmd += " --directory #{dir}"
