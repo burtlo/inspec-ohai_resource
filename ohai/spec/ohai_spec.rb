@@ -230,8 +230,7 @@ describe_inspec_resource 'ohai' do
             stdout: 'Usage: /path/to/ohai (options)', exit_status: 0
           })
         end
-
-        expect { resource.os }.to raise_error(JSON::ParserError)
+        expect { resource.os }.to raise_error(OhaiResource::ResultsParsingError)
       end
     end
   end

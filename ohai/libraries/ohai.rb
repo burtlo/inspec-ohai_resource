@@ -206,32 +206,23 @@ class OhaiResource < Inspec.resource(1)
     output.strip.split(/(^[\]\}])/).each_slice(2).map {|result| result.join }
   end
 
-  class ExecutionFailure < RuntimeError
-    def initialize(resource, command, result)
+  class ResultsParsingError < RuntimeError
+    def initialize(resource, results, parse_error)
       @resource = resource
-      @command = command
-      @result = result
+      @results = results
+      @parse_error = parse_error
     end
 
-    attr_reader :resource, :command, :result
+    attr_reader :resource, :results, :parse_error
 
     def message
       <<~RAISE
-      #{resource} failed to execute.
-      Command: #{command}
-      Results:
-        EXIT STATUS: #{result.exit_status}
+        #{resource} failed to parse the results:
+          ERROR: [#{parse_error.class}] #{parse_error} 
 
-             STDOUT: #{nil_or_empty_default_to(result.stdout,'<NONE>')}
+        RESULTS: #{results}
 
-             STDERR: #{nil_or_empty_default_to(result.stderr,'<NONE>')}
       RAISE
-    end
-
-    private
-
-    def nil_or_empty_default_to(value,default_to)
-      (value.nil? || value.empty?) ? default_to : value
     end
   end
   # Run the ohai command provided at the path, process the results and cache the data for
@@ -251,7 +242,11 @@ class OhaiResource < Inspec.resource(1)
     #   standard out and then display the error. It would also be nice if inspec provided a place
     #   locally when this error message is so big.
     parsed_results = partitioned_results.map do |result|
-      JSON.parse(result)
+      begin
+        JSON.parse(result)
+      rescue JSON::ParserError => parse_error
+        raise ResultsParsingError.new(self, result, parse_error)
+      end
     end
 
     raw_code_object_results = if options[:attribute].empty?
@@ -304,5 +299,35 @@ class OhaiResource < Inspec.resource(1)
   # Because this data is going to be read-only overwriting seems safe.
   class OhaiMash < Hashie::Mash
     disable_warnings
+  end
+
+  class ExecutionFailure < RuntimeError
+    def initialize(resource, command, result)
+      @resource = resource
+      @command = command
+      @result = result
+    end
+
+    attr_reader :resource, :command, :result
+
+    def message
+      <<~RAISE
+        #{resource} failed to execute.
+        Command: #{command}
+        Results:
+          EXIT STATUS: #{result.exit_status}
+
+               STDOUT: #{nil_or_empty_default_to(result.stdout,'<NONE>')}
+
+               STDERR: #{nil_or_empty_default_to(result.stderr,'<NONE>')}
+
+      RAISE
+    end
+
+    private
+
+    def nil_or_empty_default_to(value,default_to)
+      (value.nil? || value.empty?) ? default_to : value
+    end
   end
 end
