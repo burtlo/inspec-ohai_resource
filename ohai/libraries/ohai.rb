@@ -222,7 +222,7 @@ class OhaiResource < Inspec.resource(1)
       
       # The results coming could be hashes that contain conflicting keys
       # so the hashes will need to be deep-merged.
-      attribute_with_results.reduce({}) { |acc,cur| deep_merge(acc, cur) }
+      attribute_with_results.reduce({}) { |acc,cur| acc.deep_merge(cur) }
     end
     
     OhaiMash.new(raw_code_object_results)
@@ -233,10 +233,6 @@ class OhaiResource < Inspec.resource(1)
     last_key, *root_keys = attribute.split('/').reverse
     last_hash = root_keys.reverse.reduce(root) { |h,k| h[k] = {} ; h[k] }
     [ root, last_hash, last_key ]
-  end
-
-  def deep_merge(h1, h2)
-    h1.merge(h2) { |k,v1,v2| deep_merge(v1, v2) }
   end
 
   # The OhaiMash takes advantage of the Hashie::Mash by providing dot-notation
