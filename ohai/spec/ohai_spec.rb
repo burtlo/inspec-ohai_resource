@@ -218,8 +218,7 @@ describe_inspec_resource 'ohai' do
         environment do
           command('which ohai').returns(stdout: '')
         end
-
-        expect { resource.os }.to raise_error('Ohai Not Found')
+        expect { resource.os }.to raise_error(OhaiResource::PathCouldNotBeFound)
       end
     end
 

@@ -52,7 +52,7 @@ class OhaiResource < Inspec.resource(1)
 
     verify_options!(options)
     
-    @ohai_path_override = options[:path]
+    @provided_path = options[:path]
     @ohai_attributes = Array(options[:attribute] || options['attribute'])
     @ohai_directories = Array(options[:directory] || options['directory'])
   end
@@ -71,45 +71,89 @@ class OhaiResource < Inspec.resource(1)
     %w[ path attribute directory ].map { |opt| [ opt , opt.to_sym ] }.flatten
   end
 
-  class InvalidResourceOptions < RuntimeError ; end
+  class InvalidResourceOptions < StandardError
+    def initialize(resource, supported_options, given_options)
+      @resource = resource
+      @supported_options = supported_options
+      @given_options = given_options
+    end
+
+    attr_reader :resource, :supported_options, :given_options
+
+    def message
+      error_message = <<~RAISE
+        Ohai resource does not support options: #{ unsupported_options.join(', ') }
+        Supported Options: #{ supported_options.map { |opt| opt.inspect }.join(', ') }
+      RAISE
+    end
+  end
 
   def verify_options!(options)
     unsupported_options = options.keys.find_all { |key| ! supported_options.include?(key) }
 
     unless unsupported_options.empty?
-      error_message = <<~RAISE
-        Ohai resource does not support options: #{ unsupported_options.join(', ') }
-        Supported Options: #{ supported_options.map { |opt| opt.inspect }.join(', ') }
-      RAISE
-      raise InvalidResourceOptions.new(error_message)
+      raise InvalidResourceOptions.new(self, supported_options, unsupported_options)
     end
   end
 
-  class InvalidAttribute < RuntimeError ; end
+  class InvalidAttribute < StandardError
+    def initialize(resource, attribute_name)
+      @resource = resource
+      @attribute_name = attribute_name
+    end
+
+    attr_reader :resource, :attribute_name
+  
+    def message
+      <<~RAISE
+        #{resource} results did not contain the attribute: #{attribute_name}
+        Supported attributes: #{resource.raw_data.keys.join(', ')}
+      RAISE
+    end
+  end
 
   def method_missing(name,*args,&block)
     if raw_data
       if raw_data.key?(name)
         raw_data[name]
       else
-        error_message = <<~RAISE
-          Ohai results did not contain the attribute: #{name}
-          Supported attributes: #{raw_data.keys}
-        RAISE
-        raise InvalidAttribute.new(error_message)
+        raise InvalidAttribute.new(self, name)
       end
     else
-      # Default to the usual method_missing when there are no results.
       super
+    end
+  end
+
+  class PathCouldNotBeFound < StandardError
+    def initialize(resource, provided_path, derived_path)
+      @resource = resource
+      @provided_path = nil_or_empty?(provided_path) ? '<NONE>' : provided_path
+      @derived_path = nil_or_empty?(derived_path) ? '<NONE>' : derived_path
+    end
+
+    attr_reader :resource, :provided_path, :derived_path
+
+    def message
+      <<~RAISE
+        #{resource} could not be found
+        Provided Path: #{provided_path}
+         Derived Path: #{derived_path}
+      RAISE
+    end
+
+    private
+
+    def nil_or_empty?(value)
+      value.nil? || value.empty?
     end
   end
 
   def ohai_path
     @ohai_path ||= begin
-      path = @ohai_path_override || find_ohai_path_on_target
-      # TODO: Better error that describes that no/empty path provided
-      #   or the strategy used to find it. Other resources must do this use their work
-      raise 'Ohai Not Found' if path.nil? || path.empty?
+      path = @provided_path || find_ohai_path_on_target
+      if path.nil? || path.empty?
+        raise PathCouldNotBeFound.new(self,@provided_path,find_ohai_path_on_target)
+      end
       path
     end
   end
