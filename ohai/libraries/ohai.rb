@@ -52,9 +52,10 @@ class OhaiResource < Inspec.resource(1)
 
     verify_options!(options)
     
-    @provided_path = options[:path]
-    @ohai_attributes = Array(options[:attribute] || options['attribute'])
-    @ohai_directories = Array(options[:directory] || options['directory'])
+    options[:attribute] = Array(options[:attribute] || options['attribute'])
+    options[:directory] = Array(options[:directory] || options['directory'])
+
+    @options = Hashie::Mash.new(options)
   end
 
   def version
@@ -65,10 +66,20 @@ class OhaiResource < Inspec.resource(1)
     @raw_data ||= load_results
   end
 
+  attr_reader :options
+
   private
 
   def supported_options
     %w[ path attribute directory ].map { |opt| [ opt , opt.to_sym ] }.flatten
+  end
+
+  def verify_options!(options)
+    unsupported_options = options.keys.find_all { |key| ! supported_options.include?(key) }
+
+    unless unsupported_options.empty?
+      raise InvalidResourceOptions.new(self, supported_options, unsupported_options)
+    end
   end
 
   class InvalidResourceOptions < StandardError
@@ -88,11 +99,15 @@ class OhaiResource < Inspec.resource(1)
     end
   end
 
-  def verify_options!(options)
-    unsupported_options = options.keys.find_all { |key| ! supported_options.include?(key) }
-
-    unless unsupported_options.empty?
-      raise InvalidResourceOptions.new(self, supported_options, unsupported_options)
+  def method_missing(name,*args,&block)
+    if raw_data
+      if raw_data.key?(name)
+        raw_data[name]
+      else
+        raise InvalidAttribute.new(self, name)
+      end
+    else
+      super
     end
   end
 
@@ -112,15 +127,13 @@ class OhaiResource < Inspec.resource(1)
     end
   end
 
-  def method_missing(name,*args,&block)
-    if raw_data
-      if raw_data.key?(name)
-        raw_data[name]
-      else
-        raise InvalidAttribute.new(self, name)
+  def ohai_path
+    @ohai_path ||= begin
+      path = options[:path] || find_ohai_path_on_target
+      if path.nil? || path.empty?
+        raise PathCouldNotBeFound.new(self,options[:path],find_ohai_path_on_target)
       end
-    else
-      super
+      path
     end
   end
 
@@ -148,16 +161,6 @@ class OhaiResource < Inspec.resource(1)
     end
   end
 
-  def ohai_path
-    @ohai_path ||= begin
-      path = @provided_path || find_ohai_path_on_target
-      if path.nil? || path.empty?
-        raise PathCouldNotBeFound.new(self,@provided_path,find_ohai_path_on_target)
-      end
-      path
-    end
-  end
-
   def find_ohai_path_on_target
     # TODO: provide support for all platforms and other strageties
     inspec.command('which ohai').stdout.chomp
@@ -166,18 +169,17 @@ class OhaiResource < Inspec.resource(1)
   def build_ohai_command
     cmd = "#{ohai_path}"
 
-    @ohai_directories.each do |dir|
+    options[:directory].each do |dir|
       cmd += " --directory #{dir}"
     end
 
-    @ohai_attributes.each do |attribute|
+    options[:attribute].each do |attribute|
       cmd += " #{attribute}"
     end
 
     cmd
   end
 
-  #
   # When the ohai command is given more than a single attribute the resulting output is
   # two valid JSON objects next to one another in the output. An example:
   #
@@ -225,10 +227,10 @@ class OhaiResource < Inspec.resource(1)
       JSON.parse(result)
     end
 
-    raw_code_object_results = if @ohai_attributes.empty?
+    raw_code_object_results = if options[:attribute].empty?
       parsed_results.first
     else
-      attribute_with_results = @ohai_attributes.each_with_index.map do |attribute, index|
+      attribute_with_results = options[:attribute].each_with_index.map do |attribute, index|
         matching_results = parsed_results[index]
         matching_results = Array(matching_results).first if Array(matching_results).count == 1
         
