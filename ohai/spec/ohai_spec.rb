@@ -266,4 +266,16 @@ describe_inspec_resource 'ohai' do
       expect { resource(animal: 'zebra') }.to raise_error(OhaiResource::InvalidResourceOptions)
     end
   end
+
+  context 'when an invalid attribute is retrieved' do
+    it 'fails with error' do
+      environment do
+        command('which ohai').returns(stdout: '/path/to/ohai')
+        command('/path/to/ohai').returns(result: {
+          stdout: '{ "os": "darwin" }', exit_status: 0
+        })
+      end
+      expect { resource.unknown }.to raise_error(OhaiResource::InvalidAttribute)
+    end
+  end
 end

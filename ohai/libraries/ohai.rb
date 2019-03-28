@@ -58,8 +58,7 @@ class OhaiResource < Inspec.resource(1)
   end
 
   def version
-    # TODO: It would be good to see how far back this version string format is supported
-    inspec.command("#{ohai_path} --version").stdout.strip.split(": ").last
+    inspec.command("#{ohai_path} --version").stdout.strip.split(' ').last
   end
 
   def raw_data
@@ -79,20 +78,25 @@ class OhaiResource < Inspec.resource(1)
 
     unless unsupported_options.empty?
       error_message = <<~RAISE
-        The Ohai resource does not support options: #{ unsupported_options.join(', ') }
+        Ohai resource does not support options: #{ unsupported_options.join(', ') }
         Supported Options: #{ supported_options.map { |opt| opt.inspect }.join(', ') }
       RAISE
       raise InvalidResourceOptions.new(error_message)
     end
   end
 
+  class InvalidAttribute < RuntimeError ; end
+
   def method_missing(name,*args,&block)
     if raw_data
       if raw_data.key?(name)
         raw_data[name]
       else
-        # TODO: Create a better error message to make it clear that these are the top-level keys
-        raise "The Ohai results do not have attribute '#{name}'. Ohai did find: #{raw_data.keys}"
+        error_message = <<~RAISE
+          Ohai results did not contain the attribute: #{name}
+          Supported attributes: #{raw_data.keys}
+        RAISE
+        raise InvalidAttribute.new(error_message)
       end
     else
       # Default to the usual method_missing when there are no results.
