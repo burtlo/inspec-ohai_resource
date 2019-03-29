@@ -44,16 +44,30 @@ class OhaiResource < Inspec.resource(1)
   #   * the path and various options passed to it
   #
   def initialize(ohai_bin_path_or_options = {})
-    options = if ohai_bin_path_or_options.is_a?(String)
+    options = if no_ohai_bin_path_provied?(ohai_bin_path_or_options)
+      { ohai_bin_path: :found_on_path }
+    elsif ohai_bin_path_provided?(ohai_bin_path_or_options)
+      { ohai_bin_path: ohai_bin_path_or_options }
+    elsif ohai_bin_path_shortcut_provided?(ohai_bin_path_or_options)
       { ohai_bin_path: ohai_bin_path_or_options }
     else
       ohai_bin_path_or_options
     end
 
-    verify_options!(options)
+    options[:ohai_bin_path] = options[:ohai_bin_path] || options['ohai_bin_path']
+
+    if no_ohai_bin_path_provied?(options[:ohai_bin_path])
+      options[:ohai_bin_path] = :found_on_path
+    end
+      
+    if ohai_bin_path_shortcut_provided?(options[:ohai_bin_path])
+      options[:ohai_bin_path] = shortcut_to_ohai_bin_path(options[:ohai_bin_path])
+    end
     
     options[:attribute] = Array(options[:attribute] || options['attribute'])
     options[:directory] = Array(options[:directory] || options['directory'])
+    
+    validate_options!(options)
 
     @options = Hashie::Mash.new(options)
   end
@@ -70,11 +84,49 @@ class OhaiResource < Inspec.resource(1)
 
   private
 
+  def no_ohai_bin_path_provied?(ohai_bin_path)
+    ohai_bin_path.is_a?(NilClass)
+  end
+
+  def ohai_bin_path_provided?(ohai_bin_path)
+    ohai_bin_path.is_a?(String)
+  end
+  
+  def ohai_bin_path_shortcut_provided?(shortcut)
+    shortcut.is_a?(Symbol)
+  end
+
+  def ohai_bin_path_shortcuts
+    shortcuts = {
+      :chef => {
+        'windows' => 'c:\opscode\chef\embedded\bin\ohai.bat',
+        :default => '/opt/chef/embedded/bin/ohai'
+      },
+      :chefdk => {
+        'windows' => 'c:\opscode\chefdk\embedded\bin\ohai.bat',
+        :default => '/opt/chefdk/embedded/bin/ohai'
+      },
+      :chef_server => {
+        'windows' => (-> () { raise 'Not Supported' }),
+        :default => '/opt/opscode/embedded/bin/ohai'
+      },
+      :found_on_path => {
+        :default => 'ohai'
+      }
+    }
+  end
+
+  def shortcut_to_ohai_bin_path(shortcut)
+    paths_for_shortcut = ohai_bin_path_shortcuts[shortcut]
+    result = paths_for_shortcut[inspec.os.family] || paths_for_shortcut[:default]
+    result.is_a?(Proc) ? result.call : result
+  end
+
   def supported_options
     %w[ ohai_bin_path attribute directory ].map { |opt| [ opt , opt.to_sym ] }.flatten
   end
 
-  def verify_options!(options)
+  def validate_options!(options)
     unsupported_options = options.keys.find_all { |key| ! supported_options.include?(key) }
 
     unless unsupported_options.empty?
@@ -100,6 +152,7 @@ class OhaiResource < Inspec.resource(1)
   end
 
   def method_missing(name,*args,&block)
+    # binding.pry
     if raw_data
       raw_data[name]
     else
@@ -109,9 +162,9 @@ class OhaiResource < Inspec.resource(1)
 
   def ohai_bin_path
     @ohai_bin_path ||= begin
-      path = options[:ohai_bin_path] || find_ohai_bin_path_on_target
+      path = options[:ohai_bin_path]
       if path.nil? || path.empty?
-        raise PathCouldNotBeFound.new(self,options[:ohai_bin_path],find_ohai_bin_path_on_target)
+        raise PathCouldNotBeFound.new(self,options[:ohai_bin_path],options[:ohai_bin_path])
       end
       path
     end
