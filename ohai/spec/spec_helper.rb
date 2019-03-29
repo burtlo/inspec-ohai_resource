@@ -69,7 +69,11 @@ class DoubleBuilder
     @test_context.define_singleton_method :backend do
       b = double('backend')
       backend_doubles.each do |backend_double|
-        allow(b).to receive(backend_double.name).with(backend_double.inputs).and_return(backend_double.outputs)
+        if backend_double.has_inputs?
+          allow(b).to receive(backend_double.name).with(*backend_double.inputs).and_return(backend_double.outputs)
+        else
+          allow(b).to receive(backend_double.name).with(no_args).and_return(backend_double.outputs)
+        end
       end
       b 
     end
@@ -80,9 +84,9 @@ class DoubleBuilder
     @backend_doubles ||= []
   end
   
-  def method_missing(backend_method_name,args,&block)
+  def method_missing(backend_method_name, *args, &block)
     backend_double = BackendDouble.new(backend_method_name)
-    backend_double.inputs = args
+    backend_double.inputs = args unless args.empty?
     backend_doubles.push backend_double
     # NOTE: The block is ignored.
     self
@@ -100,8 +104,15 @@ class DoubleBuilder
 
   # Create a object to hold the backend doubling information
   class BackendDouble
+    class NoInputsSpecifed ; end
+
     def initialize(name)
       @name = name
+      @inputs = NoInputsSpecifed
+    end
+
+    def has_inputs?
+      inputs != NoInputsSpecifed
     end
 
     attr_accessor :name, :inputs, :outputs
