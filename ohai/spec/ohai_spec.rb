@@ -7,7 +7,9 @@ describe_inspec_resource 'ohai' do
       command('which ohai').returns(stdout: '/path/to/ohai')
       command('/path/to/ohai --version').returns(stdout: "Ohai: 14.8.10\n")
     end
-    
+
+    its(:version) { should eq '14.8.10' }
+
     it 'has a version' do
       expect(resource.version).to eq('14.8.10')
     end
@@ -15,7 +17,6 @@ describe_inspec_resource 'ohai' do
     context 'with no parameters' do
       context 'top-level attributes' do
         environment do
-          command('which ohai').returns(stdout: '/path/to/ohai')
           command('/path/to/ohai').returns(result: {
             stdout: '{ "os": "darwin" }', exit_status: 0
           })
@@ -28,7 +29,6 @@ describe_inspec_resource 'ohai' do
 
       context 'nested attributes' do
         environment do
-          command('which ohai').returns(stdout: '/path/to/ohai')
           command('/path/to/ohai').returns(result: {
             stdout: '{ "cpu": { "cores": 4 } }', exit_status: 0 
           })
@@ -67,7 +67,6 @@ describe_inspec_resource 'ohai' do
             }
           }
         STDOUT
-        command('which ohai').returns(stdout: '/path/to/ohai')
         command('/path/to/ohai chef_packages').returns(result: {
           stdout: chef_packages_stdout, exit_status: 0
         })
@@ -89,7 +88,6 @@ describe_inspec_resource 'ohai' do
               "ohai_root": "/Users/.../ohai-14.8.10/lib/ohai"
             }
           STDOUT
-          command('which ohai').returns(stdout: '/path/to/ohai')
           command('/path/to/ohai chef_packages/ohai').returns(result: {
             stdout: chef_packages_ohai_stdout, exit_status: 0
           })
@@ -104,7 +102,6 @@ describe_inspec_resource 'ohai' do
         # When asking for an attribute that results in only the values
         # then the results come back in an Array format.
         environment do
-          command('which ohai').returns(stdout: '/path/to/ohai')
           command('/path/to/ohai os').returns(result: {
             stdout: '[ "darwin" ]', exit_status: 0
           })
@@ -141,7 +138,6 @@ describe_inspec_resource 'ohai' do
             }
           }
         STDOUT
-        command('which ohai').returns(stdout: '/path/to/ohai')
         command('/path/to/ohai os chef_packages').returns(result: {
           stdout: ohai_stdout, exit_status: 0
         })
@@ -170,7 +166,6 @@ describe_inspec_resource 'ohai' do
               "ohai_root": "/Users/.../ohai-14.8.10/lib/ohai"
             }
           STDOUT
-          command('which ohai').returns(stdout: '/path/to/ohai')
           command('/path/to/ohai chef_packages/chef chef_packages/ohai').returns(result: {
             stdout: two_chef_package_attributes_stdout, exit_status: 0
           })
@@ -189,7 +184,6 @@ describe_inspec_resource 'ohai' do
       # will be loaded. This should be passed to the ohai command. The
       # results should be the same.
       environment do
-        command('which ohai').returns(stdout: '/path/to/ohai')
         command('/path/to/ohai --directory plugin_dir').returns(result: {
           stdout: '{ "os": "darwin" }', exit_status: 0
         })
@@ -202,7 +196,6 @@ describe_inspec_resource 'ohai' do
 
     context 'with multiple directory parameters' do
       environment do
-        command('which ohai').returns(stdout: '/path/to/ohai')
         command('/path/to/ohai --directory plugin_dir1 --directory plugin_dir2').returns(result: {
           stdout: '{ "os": "darwin" }', exit_status: 0
         })
@@ -213,19 +206,8 @@ describe_inspec_resource 'ohai' do
       end
     end
 
-    context 'but ohai is not found' do
-      environment do
-        command('which ohai').returns(stdout: '')
-      end
-
-      it 'fails with error' do        
-        expect { resource.os }.to raise_error(OhaiResource::PathCouldNotBeFound)
-      end
-    end
-
     context 'when the command returns incorrectly formed JSON' do
       environment do
-        command('which ohai').returns(stdout: '/path/to/ohai')
         command('/path/to/ohai').returns(result: {
           stdout: 'Usage: /path/to/ohai (options)', exit_status: 0
         })
@@ -233,6 +215,18 @@ describe_inspec_resource 'ohai' do
 
       it 'fails with error' do        
         expect { resource.os }.to raise_error(OhaiResource::ResultsParsingError)
+      end
+    end
+  end
+
+  context 'relying on an automatic path' do
+    context 'but ohai is not found' do
+      environment do
+        command('which ohai').returns(stdout: '')
+      end
+
+      it 'fails with error' do        
+        expect { resource.os }.to raise_error(OhaiResource::PathCouldNotBeFound)
       end
     end
   end

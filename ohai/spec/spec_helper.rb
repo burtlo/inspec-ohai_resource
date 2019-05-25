@@ -1,6 +1,8 @@
 require 'inspec'
+require 'rspec/its'
 require 'pry'
 require './libraries/ohai'
+
 
 RSpec.configure do |config|
   #
@@ -25,10 +27,26 @@ shared_context 'InSpec Resources', type: :inspec_resource do
   #   instead wrapped with the backend transport mechanism which they will be executed against.
   let(:resource_class) { Inspec::Resource.registry[resource_name] }
 
+  def self.backend_builder(builder = nil)
+    if builder
+      @backend_builder = builder
+    else
+      @backend_builder
+    end
+  end
+
   def self.environment(&block)
+    self.backend_builder(DoubleBuilder.new(&block))
+    
     let(:backend) do
-      backend_result = DoubleBuilder.new(self).evaluate(&block)
-      backend_result
+      # iterate through all of the backend builders and evaluate them all within
+      # the current scope (self). The result of evaluating a backend is a ready-to-go
+      # backend. Which should be passed from builder to build so that it builds a more
+      # complete picture of the environment.
+      
+      backend_builders = self.class.parent_groups.map { |parent| parent.backend_builder }.compact
+      starting_double = RSpec::Mocks::Double.new('backend')
+      backend_builders.inject(starting_double) { |backend, builder| builder.evaluate(self, backend) }
     end
   end
 
@@ -36,6 +54,8 @@ shared_context 'InSpec Resources', type: :inspec_resource do
   def resource(*args)
     resource_class.new(backend, resource_name, *args)
   end
+
+  let(:subject) { resource }
 
   # This is a no-op backend that should be overridden. Below is a helper method #environment which
   #   provides some shortcuts for hiding some of the RSpec mocking/stubbing double language.
@@ -60,28 +80,28 @@ end
 #   test context which it later defines the #backend method that returns the test double that
 #   is built with this DSL.
 class DoubleBuilder
-  def initialize(test_context)
-    @test_context = test_context
+  def initialize(&block)
+    @content_block = block
   end
 
-  def evaluate(&block)
+  def evaluate(test_context, backend)
     # Evaluate the block provided to queue up a bunch of backend double definitions.
-    instance_exec(&block)
+    instance_exec(&@content_block)
 
-    calculated_backend = RSpec::Mocks::Double.new('backend')
     backend_doubles = self.backend_doubles
-    @test_context.instance_exec do
+    test_context.instance_exec do
+      # require 'pry' ; binding.pry
       # With all the backend double definitions defined, create a backend to append all these doubles
       backend_doubles.each do |backend_double|
         if backend_double.has_inputs?
-          allow(calculated_backend).to receive(backend_double.name).with(*backend_double.inputs).and_return(backend_double.outputs)
+          allow(backend).to receive(backend_double.name).with(*backend_double.inputs).and_return(backend_double.outputs)
         else
-          allow(calculated_backend).to receive(backend_double.name).with(no_args).and_return(backend_double.outputs)
+          allow(backend).to receive(backend_double.name).with(no_args).and_return(backend_double.outputs)
         end
       end
     end
 
-    calculated_backend
+    backend
   end
 
   # Store all the doubling specified in the initial part of #evaluate
