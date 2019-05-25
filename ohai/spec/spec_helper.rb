@@ -25,6 +25,13 @@ shared_context 'InSpec Resources', type: :inspec_resource do
   #   instead wrapped with the backend transport mechanism which they will be executed against.
   let(:resource_class) { Inspec::Resource.registry[resource_name] }
 
+  def self.environment(&block)
+    let(:backend) do
+      backend_result = DoubleBuilder.new(self).evaluate(&block)
+      backend_result
+    end
+  end
+
   # Create an instance of the resource with the mock backend and the resource name
   def resource(*args)
     resource_class.new(backend, resource_name, *args)
@@ -46,11 +53,6 @@ shared_context 'InSpec Resources', type: :inspec_resource do
     )
   end
 
-  # The environment helper method will define a backend method that will override the above defined method
-  #   that is no-op.
-  def environment(&block)
-    DoubleBuilder.new(self).evaluate(&block)
-  end
 end
 
 # This class serves only to create a context to enable a new domain-specific-language (DSL)
@@ -63,23 +65,26 @@ class DoubleBuilder
   end
 
   def evaluate(&block)
+    # Evaluate the block provided to queue up a bunch of backend double definitions.
     instance_exec(&block)
 
+    calculated_backend = RSpec::Mocks::Double.new('backend')
     backend_doubles = self.backend_doubles
-    @test_context.define_singleton_method :backend do
-      b = double('backend')
+    @test_context.instance_exec do
+      # With all the backend double definitions defined, create a backend to append all these doubles
       backend_doubles.each do |backend_double|
         if backend_double.has_inputs?
-          allow(b).to receive(backend_double.name).with(*backend_double.inputs).and_return(backend_double.outputs)
+          allow(calculated_backend).to receive(backend_double.name).with(*backend_double.inputs).and_return(backend_double.outputs)
         else
-          allow(b).to receive(backend_double.name).with(no_args).and_return(backend_double.outputs)
+          allow(calculated_backend).to receive(backend_double.name).with(no_args).and_return(backend_double.outputs)
         end
       end
-      b 
     end
+
+    calculated_backend
   end
 
-  # Store all the doubling specified in the evaluation
+  # Store all the doubling specified in the initial part of #evaluate
   def backend_doubles
     @backend_doubles ||= []
   end
@@ -92,13 +97,21 @@ class DoubleBuilder
     self
   end
 
-  # Create a test double that models the hash into an object 
-  #   and add it to the last backend double defined.
+  # When defining a new aspect of the environment (e.g. command, file)
+  # you will often want a result from that detail. Because of the fluent
+  # interface this double builder provides this is a way to grab the last
+  # build double and append a mock of a return object.
+  #
+  # @TODO this shouldn't be used without a double being created, an
+  #   error will be generated with that last_double coming back as a nil.
+  #   There may be some interesting behavior that could be undertaken
+  #   here when no aspect is provided. It may also be better to throw a
+  #   useful exception that describes use.
   def returns(method_signature_as_hash)
     return_result = Hashie::Mash.new(method_signature_as_hash)
     last_double = backend_doubles.last
     results_double_name = "#{last_double.name}_#{last_double.inputs}_RESULTS"
-    last_double.outputs = @test_context.double(results_double_name,return_result)
+    last_double.outputs = RSpec::Mocks::Double.new(results_double_name,return_result)
     self
   end
 
