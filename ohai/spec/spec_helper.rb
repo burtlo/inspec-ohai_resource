@@ -3,7 +3,6 @@ require 'rspec/its'
 require 'pry'
 require './libraries/ohai'
 
-
 RSpec.configure do |config|
   #
   # Add a convienent name for the example group to the RSpec lexicon. This
@@ -17,7 +16,7 @@ RSpec.configure do |config|
 end
 
 shared_context 'InSpec Resources', type: :inspec_resource do
-  # Using the subject or described_class does not work. With strings I think that the 
+  # Using the subject or described_class does not work. With strings I think that the
   #   described class is not set. With symbols or constants it may work. When there are strings
   #   the subject value gets set to the last description. This asks for the description at the
   #   top of the entire test. If that is set correctly then the rest will work.
@@ -36,17 +35,17 @@ shared_context 'InSpec Resources', type: :inspec_resource do
   end
 
   def self.environment(&block)
-    self.backend_builder(DoubleBuilder.new(&block))
-    
+    backend_builder(DoubleBuilder.new(&block))
+
     let(:backend) do
       # iterate through all of the backend builders and evaluate them all within
       # the current scope (self). The result of evaluating a backend is a ready-to-go
       # backend. Which should be passed from builder to build so that it builds a more
       # complete picture of the environment.
-      
+
       backend_builders = self.class.parent_groups.map { |parent| parent.backend_builder }.compact
       starting_double = RSpec::Mocks::Double.new('backend')
-      backend_builders.inject(starting_double) { |backend, builder| builder.evaluate(self, backend) }
+      backend_builders.inject(starting_double) { |acc, elem| elem.evaluate(self, acc) }
     end
   end
 
@@ -72,11 +71,10 @@ shared_context 'InSpec Resources', type: :inspec_resource do
       BACKEND
     )
   end
-
 end
 
 # This class serves only to create a context to enable a new domain-specific-language (DSL)
-#   for defining a backend in a simple way. The DoubleBuilder is constructed with the current 
+#   for defining a backend in a simple way. The DoubleBuilder is constructed with the current
 #   test context which it later defines the #backend method that returns the test double that
 #   is built with this DSL.
 class DoubleBuilder
@@ -108,8 +106,8 @@ class DoubleBuilder
   def backend_doubles
     @backend_doubles ||= []
   end
-  
-  def method_missing(backend_method_name, *args, &block)
+
+  def method_missing(backend_method_name, *args, &_block)
     backend_double = BackendDouble.new(backend_method_name)
     backend_double.inputs = args unless args.empty?
     backend_doubles.push backend_double
@@ -135,13 +133,13 @@ class DoubleBuilder
     return_result = InSpecResouceMash.new(method_signature_as_hash)
     last_double = backend_doubles.last
     results_double_name = "#{last_double.name}_#{last_double.inputs}_RESULTS"
-    last_double.outputs = RSpec::Mocks::Double.new(results_double_name,return_result)
+    last_double.outputs = RSpec::Mocks::Double.new(results_double_name, return_result)
     self
   end
 
   # Create a object to hold the backend doubling information
   class BackendDouble
-    class NoInputsSpecifed ; end
+    class NoInputsSpecifed; end
 
     def initialize(name)
       @name = name
@@ -153,6 +151,5 @@ class DoubleBuilder
     end
 
     attr_accessor :name, :inputs, :outputs
-  end  
-  
+  end
 end
