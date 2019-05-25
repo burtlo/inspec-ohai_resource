@@ -117,6 +117,10 @@ class DoubleBuilder
     self
   end
 
+  class InSpecResouceMash < Hashie::Mash
+    disable_warnings
+  end
+
   # When defining a new aspect of the environment (e.g. command, file)
   # you will often want a result from that detail. Because of the fluent
   # interface this double builder provides this is a way to grab the last
@@ -128,7 +132,7 @@ class DoubleBuilder
   #   here when no aspect is provided. It may also be better to throw a
   #   useful exception that describes use.
   def returns(method_signature_as_hash)
-    return_result = Hashie::Mash.new(method_signature_as_hash)
+    return_result = InSpecResouceMash.new(method_signature_as_hash)
     last_double = backend_doubles.last
     results_double_name = "#{last_double.name}_#{last_double.inputs}_RESULTS"
     last_double.outputs = RSpec::Mocks::Double.new(results_double_name,return_result)
